@@ -17,7 +17,7 @@ Continuously improve agent effectiveness through structured memory, observabilit
 2. Every file in `.github/agents/` must comply with this policy.
 3. If an agent-specific rule conflicts with this file, **this file wins**.
 4. Every task must declare its active phase using canonical values: Planning, Executing, Testing, Critique, Refactoring, Re-testing, or Learning.
-5. All knowledge artifacts live in `.github/knowledge/` and are managed per the protocols below.
+5. Agent operational knowledge (memory, metrics, evolution) lives in `.github/knowledge/`. Project documentation (mission, delivery plan, backlog) lives in `docs/`.
 
 ## Canonical Phase Naming
 
@@ -66,9 +66,10 @@ For `phase` fields in handoffs and `METRICS.md`, use canonical values only.
 
 ### 4. Architect
 
-- **Responsibility:** System design, contracts, data model decisions, trade-off analysis.
+- **Responsibility:** System design, contracts, data model decisions, trade-off analysis, **security architecture review, and threat modeling.**
 - **Tools:** `read`, `search`, `web`, `todo`.
 - Must not implement feature code.
+- **Security gate:** Must review authentication, encryption, data protection, and compliance requirements during Planning before Executing begins. Flags P0 security risks to Orchestrator immediately.
 
 ### 5. Frontend Engineer
 
@@ -103,10 +104,11 @@ For `phase` fields in handoffs and `METRICS.md`, use canonical values only.
 
 ### 10. Critic
 
-- **Responsibility:** Reviews all outputs for quality. Drives the self-improvement loop. Suggests refactoring. Tracks quality over time. Maintains the Evolution Log.
+- **Responsibility:** Reviews all outputs for quality, including **OWASP Top 10 compliance and security posture**. Drives the self-improvement loop. Suggests refactoring. Tracks quality over time. Maintains the Evolution Log.
 - **Tools:** `read`, `search`, `todo`.
 - Must not edit code. **Can recommend changes** with explicit rationale.
 - Owns the Critique phase and the Learning phase.
+- **Security review:** During Critique, explicitly checks for hardcoded secrets, missing input validation, insecure error handling, and authentication/authorization gaps. Any security finding is categorized `required` by default.
 
 ## Global Rules
 
@@ -121,6 +123,12 @@ For `phase` fields in handoffs and `METRICS.md`, use canonical values only.
 9. All agents must comply with the Memory Protocol (see below).
 10. All agents must comply with the Observability Protocol (see below).
 11. No agent may modify its own `.agent.md` file.
+12. **Conflict Escalation:** When two agents disagree on a decision (e.g., Critic recommends required refactor but Engineer proposes deferral):
+    - The disagreeing agents must escalate to **Orchestrator within 24 hours**.
+    - Orchestrator consults **Product Manager** if prioritization/scope conflicts exist.
+    - Orchestrator's decision is **final** and logged as `DECISION` type entry in `MEMORY_LOG.md` with: both agents' positions, Orchestrator's reasoning, timestamp and date.
+    - No agent may override Orchestrator decision without explicit user escalation.
+    - Common conflict patterns: Critic (required) vs. Engineer (deferred), Security (risk) vs. PM (timeline), Architect (simplicity) vs. Engineer (familiarity).
 
 ## Memory Protocol
 
@@ -198,6 +206,28 @@ After completing any task (including sub-tasks), the responsible agent **must** 
 - **quality_score:** Integer 1–5 (1 = poor, 5 = excellent).
 - **notes:** Brief context or explanation.
 
+#### Streaming Metrics (Recommended)
+
+For tasks expected to span more than 1 hour:
+
+- Log metrics **per-phase** (not just end-of-task) to enable in-progress visibility.
+- Helps Orchestrator identify bottlenecks and enable course correction during execution.
+- Format: Append a new row to `METRICS.md` for each phase completed, then one final summary row at task completion.
+- Example: Task `auth-002` spans 3 phases over 2 days → log 3 interim rows (one per phase) + 1 final summary row.
+- Interim rows should include the phase name and preliminary outcome (`in-progress` or estimate); final row uses actual phase/outcome when task completes.
+
+#### Quality Score Rubric (to reduce subjectivity)
+
+Use this rubric to calibrate quality scores consistently:
+
+- **5 (Excellent):** All acceptance criteria met + zero critical findings in Critique + estimate variance <1% + all primary + edge-case test scenarios passed + no security gaps discovered.
+- **4 (Good):** All acceptance criteria met + ≤3 `recommended` improvements from Critique + estimate variance 1–10% + tests pass except documented edge cases + security baseline met + minor accessibility issues.
+- **3 (Acceptable):** Acceptance criteria mostly met (≤1 marked `partial`) + findings list present + 10–20% estimate variance + security review pending/deferred + acceptable for backlog carryover items.
+- **2 (Concerning):** Multiple acceptance criteria unmet OR multiple `required` improvements needed from Critique OR >20% estimate variance OR Critic flags quality risks OR accessibility barriers present.
+- **1 (Unacceptable):** Blocking defects present + critical security findings + severe estimate misses (>50%) + high rework risk + unusable state.
+
+**Escalation Trigger:** Any task receiving quality score ≤2 during **any phase** triggers immediate Orchestrator review. If pattern continues across 2+ tasks, escalate to Debugger for root-cause analysis. If critical security finding discovered, escalate immediately to Architect and Orchestrator.
+
 ### Delegated Logging
 
 - Agents without file-edit capability **must** include a full metrics payload in handoff output.
@@ -207,7 +237,9 @@ After completing any task (including sub-tasks), the responsible agent **must** 
 
 ### Review
 
-- Orchestrator reviews `METRICS.md` periodically to identify bottlenecks, recurring failures, and improvement opportunities.
+- Orchestrator reviews `METRICS.md` at the start of every new delivery cycle (before Planning begins) and after every Learning phase.
+- Triggers for immediate review: three or more consecutive `fail` or `partial` outcomes for the same agent or phase; any quality score of 1 or 2.
+- Review output: log a `PATTERN` or `DECISION` entry in `MEMORY_LOG.md` if a bottleneck or recurring failure is identified.
 
 ## Agent Evolution Protocol
 
@@ -220,6 +252,25 @@ The Critic maintains `.github/knowledge/EVOLUTION_LOG.md` to track proposed and 
 3. Actual `.agent.md` file modifications require **explicit Orchestrator approval** before being applied, and must record `approver` and `applied_by` attribution in handoff output and `EVOLUTION_LOG.md`.
 4. No agent may modify its own `.agent.md` file.
 
+### Trigger Criteria
+
+Critic **must** propose an agent improvement when any of the following are observed:
+
+- The same agent produces `fail` or `partial` outcome in 2 or more consecutive iterations on the same type of task.
+- The same agent misses handoff template fields in 2 or more consecutive deliveries.
+- A quality score of 2 or lower is recorded for an agent in any phase.
+- A bug introduced by an agent recurs after a previously applied fix.
+
+### Rollback Mechanism
+
+If an applied improvement makes outcomes measurably worse (quality score drops by 2+ points or failure rate doubles), Critic must:
+
+1. Log a `ROLLBACK` type entry to `EVOLUTION_LOG.md` citing the original improvement row (by date and agent).
+2. Propose the revert as a new improvement with rationale.
+3. Orchestrator approves, and the original agent file is restored by a different agent.
+
+Add `ROLLBACK` as a valid `Applied?` value: `yes`, `no`, `pending-approval`, or `rolled-back`.
+
 ### Entry Format
 
 | Date | Agent | Issue | Suggested Improvement | Approver | Applied by | Applied? |
@@ -229,9 +280,33 @@ The Critic maintains `.github/knowledge/EVOLUTION_LOG.md` to track proposed and 
 - **Applied by:** Agent that applied the change. Required for `.agent.md` changes; otherwise `n/a`.
 - **Applied?:** `yes`, `no`, or `pending-approval`.
 
+## Backlog Protocol
+
+The product backlog at `docs/BACKLOG.md` is the single source of truth for planned and unplanned work items.
+
+### Ownership
+
+- **Product Manager** owns backlog prioritization and grooming.
+- **Orchestrator** pulls items from the backlog into `docs/DELIVERY_PLAN.md` at the start of each delivery cycle.
+- Only the Orchestrator (with Product Manager confirmation) may promote a backlog item mid-cycle, and only if it is blocking.
+
+### Item Lifecycle
+
+1. New requirements discovered mid-cycle are added to `docs/BACKLOG.md` with status `open`.
+2. At cycle start, Orchestrator and Product Manager select items and update status to `planned`.
+3. During execution, active items move to `in-progress`.
+4. After validation, items move to `done`.
+5. Deferred items are marked `deferred` with rationale in the Notes column.
+
+### Integration with SDLC
+
+- **Planning phase:** Orchestrator reads `docs/BACKLOG.md` to identify candidate items for the cycle.
+- **Scope Creep Detection:** New requirements route to `docs/BACKLOG.md`, not the current cycle.
+- **Learning phase:** Unfinished items return to `open` status with lessons noted.
+
 ## Cooperation Protocol
 
-1. **Planning:** Product Manager validates user value and outcome alignment **before** Architect designs the solution. Orchestrator coordinates Business Analyst, Product Manager, and Architect.
+1. **Planning:** Orchestrator reads `docs/BACKLOG.md` to identify candidate work. Product Manager validates user value and outcome alignment **before** Architect designs the solution. Orchestrator coordinates Business Analyst, Product Manager, Architect, and User Proxy (for early UX requirements review).
 2. **Executing:** Engineers implement **only** the approved scope from Planning. No scope expansion without explicit backlog entry.
 3. **Testing:** QA Engineer validates acceptance criteria **and** generates additional edge-case test scenarios.
 4. **Critique:** Critic reviews test results, code quality, and requirements alignment. User Proxy reviews outputs for usability and accessibility.
@@ -243,20 +318,26 @@ The Critic maintains `.github/knowledge/EVOLUTION_LOG.md` to track proposed and 
 
 ### Phase 1: Planning
 
-**Owner:** Orchestrator (with Product Manager, Business Analyst, and Architect)
+**Owner:** Orchestrator (with Product Manager, Business Analyst, Architect, and User Proxy)
 
 Required actions:
 
-1. Clarify the user goal, constraints, and success criteria.
-2. Product Manager confirms the work ties to measurable user value.
-3. Business Analyst produces scoped requirements and acceptance criteria.
-4. Architect defines technical approach, contracts, and data model impacts.
-5. Break work into discrete tasks and assign owners.
-6. Define test strategy before implementation starts.
-7. All participants read `MEMORY_LOG.md` for relevant prior context.
+1. Read `docs/BACKLOG.md` to identify candidate items for this cycle.
+2. Read `docs/PROJECT_MISSION.md` for project goals, scope, and success criteria.
+3. Read `docs/DELIVERY_PLAN.md` for current cycle context (if a cycle is in progress).
+4. Clarify the user goal, constraints, and success criteria.
+5. Product Manager confirms the work ties to measurable user value.
+6. Business Analyst produces scoped requirements and acceptance criteria.
+7. Architect defines technical approach, contracts, and data model impacts.
+8. **Architect conducts threat modeling and reviews security requirements** (authentication, encryption, compliance, data protection) as part of technical design.
+9. **User Proxy reviews user-facing requirements** (mockups, wireframes, workflows) for UX friction and accessibility constraints; flags blocking issues early.
+10. Break work into discrete tasks and assign owners.
+11. Define test strategy before implementation starts.
+12. All participants read `MEMORY_LOG.md` for relevant prior context.
 
 Planning outputs:
 
+- Backlog items selected for this cycle (with IDs).
 - Problem statement with user-value justification.
 - In-scope and out-of-scope list.
 - Acceptance criteria (testable).
@@ -266,9 +347,12 @@ Planning outputs:
 Exit criteria:
 
 - Product Manager has confirmed user-value alignment.
-- Requirements are unambiguous.
-- Implementation tasks are delegated.
-- Validation approach is agreed.
+- All acceptance criteria are written in SMART format (Specific, Measurable, Achievable, Relevant, Time-bound) and reviewed by both Business Analyst and Product Manager.
+- Every acceptance criterion maps to at least one test case in the test strategy.
+- Implementation tasks are delegated with explicit owners.
+- Validation approach is agreed and test entry points are identified.
+- Security requirements are documented and threat model reviewed by Architect (or deferred with explicit risk acceptance logged as `DECISION`).
+- User Proxy has reviewed user-facing requirements and flagged accessibility/friction concerns; any blocking UX issues are in scope for execution or explicitly deferred.
 
 ### Phase 2: Executing
 
@@ -282,6 +366,12 @@ Required actions:
 4. Document decisions that affect future maintenance.
 5. Report blockers immediately with alternatives.
 6. Log significant decisions to `MEMORY_LOG.md`.
+7. **Security checklist (Backend Engineer — required before handoff):**
+   - No secrets or credentials hardcoded; environment variables used.
+   - All external input validated and sanitized at system boundaries.
+   - Authentication and authorization enforced on all protected endpoints.
+   - Errors handled without leaking internal state or stack traces.
+   - Dependencies checked for known vulnerabilities (if tooling available).
 
 Execution outputs:
 
@@ -328,7 +418,7 @@ Exit criteria:
 Required actions:
 
 1. Review test results from Phase 3.
-2. Review code quality: readability, maintainability, security, performance.
+2. Review code quality: readability, maintainability, performance, and **security (OWASP Top 10: injection, broken auth, sensitive data exposure, insecure design, security misconfiguration, vulnerable dependencies, logging/monitoring gaps).**
 3. Verify requirements alignment: does the implementation satisfy the original user intent?
 4. User Proxy evaluates usability, clarity, and accessibility of user-facing changes.
 5. Produce a prioritized list of improvement recommendations.
@@ -344,8 +434,10 @@ Critique outputs:
 
 Exit criteria:
 
-- All outputs have been reviewed.
-- Improvement recommendations are actionable and categorized.
+- All outputs have been reviewed by both Critic and User Proxy.
+- Every improvement recommendation cites a specific file, section, or behavior (no vague recommendations).
+- Improvement recommendations are categorized (`required`, `recommended`, or `optional`).
+- Verdict is explicitly stated: `aligned`, `partial`, or `misaligned`.
 - If verdict is `aligned` with no `required` improvements, Refactoring phase may be skipped (with Orchestrator approval).
 
 ### Phase 5: Refactoring
@@ -401,6 +493,7 @@ Required actions:
 3. **Critic** reviews whether any agent's behavior should be adjusted and updates `EVOLUTION_LOG.md`.
 4. **Orchestrator** ensures all agents have logged metrics to `METRICS.md` directly or via delegated logging with attribution.
 5. **Orchestrator** confirms the iteration is complete or initiates the next iteration if issues remain.
+6. **Orchestrator** updates `docs/BACKLOG.md` — mark completed items as `done`, return unfinished items to `open`.
 
 Learning outputs:
 
@@ -421,6 +514,8 @@ Exit criteria:
 Use task-complexity triage before starting implementation work:
 
 - `T0` (low risk): documentation-only or narrow configuration changes with no runtime behavior change and no data-model impact.
+  - Examples: updating README, adding a code comment, fixing a typo in a prompt file, renaming a label in a config that has no behavioral effect.
+  - NOT T0: changing an environment variable default, updating a routing rule, modifying an agent's tool list, or changing a prompt that alters agent behavior.
 - `T1` (medium risk): localized behavior change in one bounded area with limited integration risk.
 - `T2` (high risk): cross-component or contract-impacting changes with notable regression/security risk.
 
@@ -440,6 +535,20 @@ Fast-track rules:
 - **Maximum iteration depth: 3.**
 - If 3 iterations do not resolve all issues, the Orchestrator **must escalate to the user** with a summary of what was attempted, what remains unresolved, and recommended next steps.
 
+### Escalation Content
+
+When escalating after 3 iterations, the Orchestrator must include:
+
+1. **Task ID and description.**
+2. **Iteration history:** What was tried in each iteration (brief one-line summary per iteration).
+3. **Unresolved issue:** The exact requirement, defect, or critique finding that could not be resolved.
+4. **Root cause hypothesis:** Why the issue persists (conflict, ambiguity, external dependency, unclear requirement).
+5. **Options for the user:**
+   - Option A: Descope the unresolved item and ship with documented exception.
+   - Option B: Provide additional context or clarify the requirement.
+   - Option C: Accept the current state with a backlog item for the remaining issue.
+6. **Recommended option** with rationale.
+
 ### Phase Skip Governance
 
 - A phase may be skipped only with Orchestrator approval and explicit justification.
@@ -448,9 +557,37 @@ Fast-track rules:
 - The same skip details must appear in the iteration summary and final handoff.
 - A skip without the `DECISION` log is invalid and does not satisfy Definition of Done.
 
+#### Pre-Approved Skip Patterns
+
+The following skip patterns are pre-approved for fast-tracking (still require `DECISION` log but do not require ad-hoc Orchestrator approval):
+
+1. **Skip Refactoring Phase:** When Critique produces verdict `aligned` **with zero (0) `required` improvements** and all `recommended` improvements are deferred with documented reasons.
+   - Condition: `Critique.verdict == "aligned" && required_improvements == 0`
+   - Log: `DECISION` entry citing Critique outcome with deferral rationale and Orchestrator confirmation.
+   - Timeline: Same-day approval acceptable without explicit escalation.
+
+2. **Skip Re-testing Phase:** When Refactoring only addresses `optional` improvements (no code behavior changes, only documentation/comments/whitespace).
+   - Condition: `all_changes_in_docs_or_comments == true && no_runtime_behavior_changes`
+   - Log: `DECISION` entry listing changed files (all non-behavioral), confirming no test regression possible.
+   - Timeline: Same-day approval acceptable.
+
+3. **Skip Testing Phase (T0 tasks only):** When task is pure configuration/documentation with zero runtime behavior change and no defaults changed.
+   - Condition: `T0_classification_confirmed && no_code_changes && no_defaults_changed && no_behavioral_impact`
+   - Log: `DECISION` entry with T0 triage justification, configuration changes listed, caveat that Critique must validate no hidden impacts.
+   - Timeline: T0 triage confirmation required; Orchestrator approval can follow same-day.
+
+#### Non-Approvable Skips
+
+The following phases may **never** be skipped (always require explicit Orchestrator + PM approval, escalation entry):
+
+- **Planning phase:** Always required (sets scope, acceptance criteria, ownership).
+- **Testing phase** (except T0): High risk; always requires explicit Orchestrator + Product Manager approval + risk acceptance.
+- **Critique phase:** Bypasses quality gate; always requires explicit escalation and documented risk ownership.
+- **Learning phase:** Breaks feedback loop and institutional memory; always requires explicit Orchestrator approval + rationale in MEMORY_LOG.
+
 ### Scope Creep Detection
 
-- If new requirements emerge during Executing, Testing, Critique, or Refactoring phases, they are **added to the backlog**, not the current cycle.
+- If new requirements emerge during Executing, Testing, Critique, or Refactoring phases, they are **added to `docs/BACKLOG.md`**, not the current cycle.
 - Only the Orchestrator (with Product Manager confirmation) may promote a backlog item into the current cycle, and only if it is blocking.
 
 ### Overengineering Guard

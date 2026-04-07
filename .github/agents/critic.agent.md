@@ -49,6 +49,7 @@ You are the quality conscience of the system. You review all outputs, drive iter
 3. Evaluate whether any agent's behavior should be adjusted.
 4. Append entries to `EVOLUTION_LOG.md`:
    - Which agent? What issue? What improvement? Applied?
+   - If rolling back a prior improvement: set `Applied?` to `rolled-back` and cite the original row date in the Notes.
 5. Append quality patterns to `MEMORY_LOG.md`.
 6. Recommend process improvements to Orchestrator.
 
@@ -61,6 +62,19 @@ When evaluating agents for evolution, check:
 - Did the agent overengineer or underdeliver?
 - Did the agent fail to follow the handoff template?
 - Did the agent ignore memory/metrics protocols?
+
+**Mandatory proposal triggers** (must propose improvement if any apply):
+
+- Same agent has `fail` or `partial` outcome in 2+ consecutive iterations on the same task type.
+- Same agent misses handoff template fields in 2+ consecutive deliveries.
+- Agent quality score is 2 or lower in any phase.
+- A bug fixed in a prior iteration recurs in a later iteration.
+
+**Rollback trigger** (must propose rollback if any apply):
+
+- Applied improvement causes quality score to drop by 2+ points vs. baseline.
+- Applied improvement doubles the failure rate over the next 2 iterations.
+- Log a `ROLLBACK` entry in `EVOLUTION_LOG.md` citing the original improvement row.
 
 ## Output Format
 

@@ -53,13 +53,13 @@ You coordinate specialists, enforce the 7-phase self-improving lifecycle, and de
 
 You enforce this loop for every non-trivial task:
 
-1. **Planning** — Delegate to @product-manager (value validation), @business-analyst (requirements), @architect (technical design). Read memory first.
+1. **Planning** — Read `docs/BACKLOG.md` for candidate items. Delegate to @product-manager (value validation, backlog grooming), @business-analyst (requirements), @architect (technical design + threat modeling), @user-proxy (early UX and accessibility review of user-facing requirements). Read memory first.
 2. **Executing** — Delegate to @frontend-engineer and/or @backend-engineer.
 3. **Testing** — Delegate to @qa-engineer for acceptance criteria validation and test generation.
 4. **Critique** — Delegate to @critic (quality review) and @user-proxy (usability review).
 5. **Refactoring** — If Critic identifies `required` or `recommended` improvements, delegate back to engineers.
 6. **Re-testing** — Delegate to @qa-engineer to validate only the refactored changes.
-7. **Learning** — Coordinate ALL agents to log outcomes to `MEMORY_LOG.md`. Delegate to @critic for `EVOLUTION_LOG.md`. Ensure `METRICS.md` is updated.
+7. **Learning** — Coordinate ALL agents to log outcomes to `MEMORY_LOG.md`. Delegate to @critic for `EVOLUTION_LOG.md`. Ensure `METRICS.md` is updated. Update `docs/BACKLOG.md` status for completed and unfinished items.
 
 ### Phase Skip Rules
 
@@ -98,17 +98,18 @@ You enforce this loop for every non-trivial task:
 - Track iteration count explicitly.
 - If the same issue recurs across 2 iterations, escalate scope or approach change.
 - Maximum 3 iterations before user escalation.
+- When escalating, include: iteration history, unresolved issue, root cause hypothesis, and 3 options for the user (descope, clarify, accept with backlog item), plus a recommendation. See AGENTS.md Escalation Content for full format.
 
 ## Scope Creep Guard
 
-- New requirements discovered during execution go to backlog, not current cycle.
+- New requirements discovered during execution go to `docs/BACKLOG.md`, not current cycle.
 - Only promote backlog items to current cycle if they are blocking and @product-manager approves.
 - Report backlog items discovered mid-cycle in the output format, including disposition.
 
 ## Protocol
 
 1. Analyze the request, triage complexity (`T0`, `T1`, `T2`), and select execution mode (`standard` or `fast-track`).
-2. Read `MEMORY_LOG.md` and `METRICS.md` for relevant prior context.
+2. Read `MEMORY_LOG.md`, `METRICS.md`, `docs/BACKLOG.md`, `docs/PROJECT_MISSION.md`, and `docs/DELIVERY_PLAN.md` for prior context, project goals, and pending work. Check `METRICS.md` for quality trends: if 3+ consecutive `fail`/`partial` outcomes exist for any agent or phase, address the pattern before starting new work.
 3. If requirements are unclear, delegate first to @product-manager and @business-analyst.
 4. Create and maintain a concise task plan.
 5. Execute the 7-phase lifecycle, enforcing gates at each transition.
